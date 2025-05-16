@@ -278,7 +278,7 @@ void CartesianForceController::ftSensorWrenchCallback(
   if (m_ft_sensor_wrench_publisher->trylock())
   {
     m_ft_sensor_wrench_publisher->msg_.header.stamp = now;
-    m_ft_sensor_wrench_publisher->msg_.header.frame_id = "tool0";
+    m_ft_sensor_wrench_publisher->msg_.header.frame_id = Base::m_end_effector_link;
     m_ft_sensor_wrench_publisher->msg_.wrench.force.x = tmp[0];
     m_ft_sensor_wrench_publisher->msg_.wrench.force.y = tmp[1];
     m_ft_sensor_wrench_publisher->msg_.wrench.force.z = tmp[2];
@@ -291,7 +291,7 @@ void CartesianForceController::ftSensorWrenchCallback(
   if (m_ft_sensor_wrench_filt_publisher->trylock())
   {
     m_ft_sensor_wrench_filt_publisher->msg_.header.stamp = now;
-    m_ft_sensor_wrench_filt_publisher->msg_.header.frame_id = "tool0";
+    m_ft_sensor_wrench_filt_publisher->msg_.header.frame_id = Base::m_end_effector_link;
     m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.x = m_ft_sensor_filt_wrench[0];
     m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.y = m_ft_sensor_filt_wrench[1];
     m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.z = m_ft_sensor_filt_wrench[2];
