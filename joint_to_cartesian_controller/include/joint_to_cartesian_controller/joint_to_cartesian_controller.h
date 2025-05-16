@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "cartesian_controller_base/ROS2VersionConfig.h"
 #include "controller_interface/chainable_controller_interface.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "realtime_tools/realtime_buffer.hpp"
