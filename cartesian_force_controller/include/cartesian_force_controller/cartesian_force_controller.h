@@ -106,8 +106,10 @@ private:
   void targetWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
   void ftSensorWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
 
-  bool m_filter_initialized;
-  ctrl::Vector6D m_ft_sensor_filt_wrench;
+  bool m_lp_filter_initialized;
+  bool m_notch_filter_initialized;
+  ctrl::Vector6D m_ft_sensor_lp_filt_wrench;
+  ctrl::Vector6D m_ft_sensor_notch_filt_wrench;
   realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::msg::WrenchStamped> m_ft_sensor_wrench_publisher;
   realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::msg::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
 
