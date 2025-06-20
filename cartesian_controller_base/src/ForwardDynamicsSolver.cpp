@@ -106,6 +106,7 @@ namespace cartesian_controller_base{
     m_current_velocities.data = m_last_velocities.data + m_current_accelerations.data * period.toSec();
     m_current_velocities.data *= 0.9;  // 10 % global damping against unwanted null space motion.
                                        // Will cause exponential slow-down without input.
+    m_future_positions.data = m_current_positions.data + m_current_velocities.data * period.toSec();
 
     // Make sure positions stay in allowed margins
     applyJointLimits();
