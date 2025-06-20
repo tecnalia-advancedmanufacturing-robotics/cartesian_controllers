@@ -194,6 +194,10 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
     std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::TwistStamped> >(
       nh, "current_twist", 3);
 
+  m_feedback_joints_cmd_publisher =
+    std::make_shared<realtime_tools::RealtimePublisher<sensor_msgs::JointState> >(
+      nh, "joints_cmd", 3);
+
   // Connect dynamic reconfigure and overwrite the default values with values
   // on the parameter server. This is done automatically if parameters with
   // the according names exist.
@@ -268,6 +272,20 @@ computeJointControlCmds(const ctrl::Vector6D& error, const ros::Duration& period
   m_simulated_joint_motion = m_ik_solver->getJointControlCmds(
       period,
       m_cartesian_input);
+
+  if (m_feedback_joints_cmd_publisher->trylock()){
+    m_feedback_joints_cmd_publisher->msg_ = sensor_msgs::JointState();
+    m_feedback_joints_cmd_publisher->msg_.header.stamp = ros::Time::now();
+    m_feedback_joints_cmd_publisher->msg_.header.frame_id = m_robot_base_link;
+    m_feedback_joints_cmd_publisher->msg_.name = {"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                                                  "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"}; 
+    for (size_t i = 0; i < m_simulated_joint_motion.positions.size(); ++i) {
+        m_feedback_joints_cmd_publisher->msg_.position.push_back(m_simulated_joint_motion.positions[i]);
+        m_feedback_joints_cmd_publisher->msg_.velocity.push_back(m_simulated_joint_motion.velocities[i]);
+    }
+
+    m_feedback_joints_cmd_publisher->unlockAndPublish();
+  }
 
   m_ik_solver->updateKinematics();
 }

@@ -46,6 +46,7 @@
 #include <geometry_msgs/WrenchStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
+#include <sensor_msgs/JointState.h>
 #include <realtime_tools/realtime_publisher.h>
 
 // ros_controls
@@ -221,6 +222,8 @@ class CartesianControllerBase : public controller_interface::Controller<Hardware
       m_feedback_pose_publisher;
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::TwistStamped>
       m_feedback_twist_publisher;
+    realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::JointState>
+      m_feedback_joints_cmd_publisher;
 
 };
 
