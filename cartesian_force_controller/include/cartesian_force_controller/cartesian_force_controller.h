@@ -121,6 +121,12 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
     std::string           m_ft_sensor_ref_link;
     KDL::Frame            m_ft_sensor_transform;
 
+    bool m_lp_filter_initialized;
+    ctrl::Vector6D m_ft_sensor_lp_filt_wrench;
+
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_publisher;
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
+
     /**
      * Allow users to choose whether to specify their target wrenches in the
      * end-effector frame (= True) or the base frame (= False). The first one

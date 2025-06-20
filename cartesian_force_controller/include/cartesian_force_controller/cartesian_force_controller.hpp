@@ -53,7 +53,7 @@ namespace cartesian_force_controller
 template <class HardwareInterface>
 CartesianForceController<HardwareInterface>::
 CartesianForceController()
-: Base::CartesianControllerBase(), m_hand_frame_control(true)
+: Base::CartesianControllerBase(), m_hand_frame_control(true), m_lp_filter_initialized(false)
 {
 }
 
@@ -84,6 +84,11 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
   m_signal_taring_server = nh.advertiseService("signal_taring",&CartesianForceController<HardwareInterface>::signalTaringCallback,this);
   m_target_wrench_subscriber = nh.subscribe("target_wrench",2,&CartesianForceController<HardwareInterface>::targetWrenchCallback,this);
   m_ft_sensor_wrench_subscriber = nh.subscribe("ft_sensor_wrench",2,&CartesianForceController<HardwareInterface>::ftSensorWrenchCallback,this);
+
+  m_ft_sensor_wrench_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench", 3);
+  m_ft_sensor_wrench_filt_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench_filtered", 3);
 
   // Initialize tool and gravity compensation
   std::map<std::string, double> gravity;
@@ -267,12 +272,63 @@ ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
   // Compute how the measured wrench appears in the frame of interest.
   tmp = m_ft_sensor_transform * tmp;
 
-  m_ft_sensor_wrench[0] = tmp[0];
-  m_ft_sensor_wrench[1] = tmp[1];
-  m_ft_sensor_wrench[2] = tmp[2];
-  m_ft_sensor_wrench[3] = tmp[3];
-  m_ft_sensor_wrench[4] = tmp[4];
-  m_ft_sensor_wrench[5] = tmp[5];
+  // Add LP filter
+  double fc = 10.0;
+  double fs = 500.0; // FIXME: Sampling frequency as ros param
+  double m_alpha = (2 * M_PI * fc)/(2 * M_PI * fc + fs);
+
+  KDL::Wrench tmp_filt;
+  if (!m_lp_filter_initialized)
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      m_ft_sensor_lp_filt_wrench[i] = tmp[i];
+    }
+    m_lp_filter_initialized = true;
+  }
+  else
+  {
+    // Apply LP filter: y[n] = alpha*x[n] + (1-alpha)*y[n-1]
+    for(int i = 0; i < 6; i++)
+    {
+      m_ft_sensor_lp_filt_wrench[i] = m_alpha * tmp[i] + (1 - m_alpha) * m_ft_sensor_lp_filt_wrench[i];
+    }
+  }
+
+  for(int i = 0; i < 6; i++)
+  {
+    m_ft_sensor_wrench[i] = m_ft_sensor_lp_filt_wrench[i];
+  }
+
+  // Publish
+  auto now = ros::Time::now();
+  if (m_ft_sensor_wrench_publisher->trylock())
+  {
+    m_ft_sensor_wrench_publisher->msg_.header.stamp = now;
+    m_ft_sensor_wrench_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.x = tmp[0];
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.y = tmp[1];
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.z = tmp[2];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.x = tmp[3];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.y = tmp[4];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.z = tmp[5];
+
+    m_ft_sensor_wrench_publisher->unlockAndPublish();
+  }
+  if (m_ft_sensor_wrench_filt_publisher->trylock())
+  {
+    m_ft_sensor_wrench_filt_publisher->msg_.header.stamp = now;
+    m_ft_sensor_wrench_filt_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.x = m_ft_sensor_wrench[0];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.y = m_ft_sensor_wrench[1];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.z = m_ft_sensor_wrench[2];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.x = m_ft_sensor_wrench[3];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.y = m_ft_sensor_wrench[4];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.z = m_ft_sensor_wrench[5];
+
+    m_ft_sensor_wrench_filt_publisher->unlockAndPublish();
+  }
+
 }
 
 template <class HardwareInterface>
