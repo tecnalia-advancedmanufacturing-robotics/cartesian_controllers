@@ -222,8 +222,6 @@ class CartesianControllerBase : public controller_interface::Controller<Hardware
       m_feedback_pose_publisher;
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::TwistStamped>
       m_feedback_twist_publisher;
-    realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::JointState>
-      m_feedback_joints_cmd_publisher;
 
 };
 
