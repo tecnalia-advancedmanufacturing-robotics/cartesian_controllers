@@ -249,22 +249,26 @@ void CartesianForceController::ftSensorWrenchCallback(
   // Compute how the measured wrench appears in the frame of interest.
   tmp = m_ft_sensor_transform * tmp;
 
-  applyLPFilter(tmp, m_ft_sensor_lp_filt_wrench);
-
   if(m_tool_speed_initialized)
   {
-    applyNotchFilter(m_tool_speed_hz, m_ft_sensor_lp_filt_wrench, m_ft_sensor_notch_filt_wrench);
-    for(int i = 0; i < 6; i++)
-    {
-      m_ft_sensor_wrench[i] = m_ft_sensor_notch_filt_wrench[i];
-    }
+    ctrl::Vector6D tmp_vec;
+    tmp_vec.head<3>() = Eigen::Vector3d(tmp.force.x(), tmp.force.y(), tmp.force.z());
+    tmp_vec.tail<3>() = Eigen::Vector3d(tmp.torque.x(), tmp.torque.y(), tmp.torque.z());
+    applyNotchFilter(m_tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
   }
   else
   {
     for(int i = 0; i < 6; i++)
     {
-      m_ft_sensor_wrench[i] = m_ft_sensor_lp_filt_wrench[i];
+      m_ft_sensor_notch_filt_wrench[i] = tmp[i];
     }
+  }
+
+  applyLPFilter(m_ft_sensor_notch_filt_wrench, m_ft_sensor_lp_filt_wrench);
+
+  for(int i = 0; i < 6; i++)
+  {
+    m_ft_sensor_wrench[i] = m_ft_sensor_lp_filt_wrench[i];
   }
 
   // Publish
@@ -318,7 +322,7 @@ void CartesianForceController::toolSpeedCallback(const std_msgs::msg::UInt16::Sh
   return;
 }
 
-void CartesianForceController::applyLPFilter(const KDL::Wrench& measured_wrench, ctrl::Vector6D& filtered_wrench)
+void CartesianForceController::applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
 {
   double fc = 10.0;
   double m_alpha = (2 * M_PI * fc)/(2 * M_PI * fc + m_fs);
@@ -343,7 +347,6 @@ void CartesianForceController::applyLPFilter(const KDL::Wrench& measured_wrench,
 
 void CartesianForceController::applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
 {
-  // double f0 = 67.65;
   double bw = 15.0;
   double Q = f0 / bw;
   double w0 = 2.0* M_PI * f0 / m_fs;

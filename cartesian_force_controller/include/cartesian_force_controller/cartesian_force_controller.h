@@ -107,7 +107,7 @@ private:
   void targetWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
   void ftSensorWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
   void toolSpeedCallback(const std_msgs::msg::UInt16::SharedPtr speed);
-  void applyLPFilter(const KDL::Wrench& measured_wrench, ctrl::Vector6D& filtered_wrench);
+  void applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
   void applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
 
   bool m_lp_filter_initialized;
