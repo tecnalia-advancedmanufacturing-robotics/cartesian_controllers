@@ -112,6 +112,9 @@ class CartesianComplianceController
 
     std::shared_ptr<dynamic_reconfigure::Server<ComplianceConfig> > m_dyn_conf_server;
     dynamic_reconfigure::Server<ComplianceConfig>::CallbackType m_callback_type;
+
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_motion_err_publisher;
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_force_err_publisher;
 };
 
 }
