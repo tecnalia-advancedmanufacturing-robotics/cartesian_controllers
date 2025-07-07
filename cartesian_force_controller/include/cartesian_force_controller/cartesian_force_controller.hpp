@@ -90,6 +90,10 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
   m_ft_sensor_wrench_filt_publisher =
       std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench_filtered", 3);
 
+  // Initialize sampling frequency and cutting frequency for LP filtering: FIXME should be from a param
+  m_fs = 500.0;
+  m_fc = 10.0;
+
   // Initialize tool and gravity compensation
   std::map<std::string, double> gravity;
   if (!nh.getParam("gravity",gravity))
@@ -272,28 +276,11 @@ ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
   // Compute how the measured wrench appears in the frame of interest.
   tmp = m_ft_sensor_transform * tmp;
 
-  // Add LP filter
-  double fc = 10.0;
-  double fs = 500.0; // FIXME: Sampling frequency as ros param
-  double m_alpha = (2 * M_PI * fc)/(2 * M_PI * fc + fs);
-
-  KDL::Wrench tmp_filt;
-  if (!m_lp_filter_initialized)
-  {
-    for(int i = 0; i < 6; i++)
-    {
-      m_ft_sensor_lp_filt_wrench[i] = tmp[i];
-    }
-    m_lp_filter_initialized = true;
-  }
-  else
-  {
-    // Apply LP filter: y[n] = alpha*x[n] + (1-alpha)*y[n-1]
-    for(int i = 0; i < 6; i++)
-    {
-      m_ft_sensor_lp_filt_wrench[i] = m_alpha * tmp[i] + (1 - m_alpha) * m_ft_sensor_lp_filt_wrench[i];
-    }
-  }
+  ctrl::Vector6D tmp_vec;
+  tmp_vec.head<3>() = Eigen::Vector3d(tmp.force.x(), tmp.force.y(), tmp.force.z());
+  tmp_vec.tail<3>() = Eigen::Vector3d(tmp.torque.x(), tmp.torque.y(), tmp.torque.z());
+    
+  applyLPFilter(tmp_vec, m_ft_sensor_lp_filt_wrench);
 
   for(int i = 0; i < 6; i++)
   {
@@ -328,7 +315,30 @@ ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
 
     m_ft_sensor_wrench_filt_publisher->unlockAndPublish();
   }
+}
 
+template <class HardwareInterface>
+void CartesianForceController<HardwareInterface>::
+applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
+{
+  double m_alpha = (2 * M_PI * m_fc)/(2 * M_PI * m_fc + m_fs);
+
+  if (!m_lp_filter_initialized)
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      filtered_wrench[i] = measured_wrench[i];
+    }
+    m_lp_filter_initialized = true;
+  }
+  else
+  {
+    // Apply LP filter: y[n] = alpha*x[n] + (1-alpha)*y[n-1]
+    for(int i = 0; i < 6; i++)
+    {
+      filtered_wrench[i] = m_alpha * measured_wrench[i] + (1 - m_alpha) * filtered_wrench[i];
+    }
+  }
 }
 
 template <class HardwareInterface>

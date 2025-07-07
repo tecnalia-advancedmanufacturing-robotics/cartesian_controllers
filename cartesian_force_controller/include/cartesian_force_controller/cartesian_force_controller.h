@@ -108,6 +108,7 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
 
     void targetWrenchCallback(const geometry_msgs::WrenchStamped& wrench);
     void ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench);
+    void applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
     bool signalTaringCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
     ros::ServiceServer    m_signal_taring_server;
@@ -123,6 +124,8 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
 
     bool m_lp_filter_initialized;
     ctrl::Vector6D m_ft_sensor_lp_filt_wrench;
+    double m_fs;
+    double m_fc;
 
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_publisher;
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
