@@ -95,9 +95,17 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
   m_ft_sensor_wrench_filt_publisher =
       std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench_filtered", 3);
 
-  // Initialize sampling frequency and cutting frequency for LP filtering: FIXME should be from a param
-  m_fs = 500.0;
-  m_fc = 10.0;
+  // Initialize Filters: sampling frequency and cut-off frequency
+  if (!nh.getParam("sampling_frequency",m_fs))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/sampling_frequency" << " from parameter server");
+    return false;
+  }
+  if (!nh.getParam("lp_cutoff_frequency",m_fc))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/lp_cutoff_frequency" << " from parameter server");
+    return false;
+  }
 
   // Initialize tool and gravity compensation
   std::map<std::string, double> gravity;
