@@ -96,14 +96,19 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
       std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench_filtered", 3);
 
   // Initialize Filters: sampling frequency and cut-off frequency
-  if (!nh.getParam("sampling_frequency",m_fs))
+  if (!nh.getParam("filter_fs",m_fs))
   {
-    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/sampling_frequency" << " from parameter server");
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_fs" << " from parameter server");
     return false;
   }
-  if (!nh.getParam("lp_cutoff_frequency",m_fc))
+  if (!nh.getParam("filter_lp_fc",m_fc))
   {
-    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/lp_cutoff_frequency" << " from parameter server");
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_lp_fc" << " from parameter server");
+    return false;
+  }
+  if (!nh.getParam("filter_n_bw",m_bw))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_n_bw" << " from parameter server");
     return false;
   }
 
@@ -386,8 +391,7 @@ template <class HardwareInterface>
 void CartesianForceController<HardwareInterface>::
 applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
 {
-  double bw = 15.0;
-  double Q = f0 / bw;
+  double Q = f0 / m_bw;
   double w0 = 2.0* M_PI * f0 / m_fs;
   double m_alpha_notch = sin(w0) / (2.0 * Q);
 

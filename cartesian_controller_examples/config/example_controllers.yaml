@@ -31,8 +31,10 @@ my_cartesian_force_controller:
     - joint4
     - joint5
     - joint6
-    sampling_frequency: 500.0
-    lp_cutoff_frequency: 10.0
+
+    filter_fs: 500.0
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
 
     solver:
         error_scale: 0.5
@@ -60,8 +62,10 @@ my_cartesian_compliance_controller:
     - joint4
     - joint5
     - joint6
-    sampling_frequency: 500.0
-    lp_cutoff_frequency: 10.0
+
+    filter_fs: 500.0
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
 
     stiffness:  # w.r.t. compliance_ref_link
         trans_x: 500

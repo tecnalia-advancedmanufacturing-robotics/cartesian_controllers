@@ -132,6 +132,7 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
     ctrl::Vector6D m_ft_sensor_notch_filt_wrench;
     double m_fs;
     double m_fc;
+    double m_bw;
 
     bool m_tool_speed_initialized;
     uint16_t m_tool_speed_rpm;
