@@ -283,15 +283,13 @@ template <class HardwareInterface>
 void CartesianForceController<HardwareInterface>::
 toolSpeedCallback(const std_msgs::UInt16& speed)
 {
-  m_tool_speed_rpm = speed.data;
-  m_tool_speed_hz = static_cast<double>(m_tool_speed_rpm) / 60.0 + m_tool_interaction_hz;
-
-  if (m_tool_speed_rpm < 3000)
+    if (speed.data < 3000)
   {
     m_tool_speed_initialized = false;
     return;
   }
 
+  m_tool_speed_rpm = speed.data;
   m_tool_speed_initialized = true;
 }
 
@@ -315,7 +313,9 @@ ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
     ctrl::Vector6D tmp_vec;
     tmp_vec.head<3>() = Eigen::Vector3d(tmp.force.x(), tmp.force.y(), tmp.force.z());
     tmp_vec.tail<3>() = Eigen::Vector3d(tmp.torque.x(), tmp.torque.y(), tmp.torque.z());
-    applyNotchFilter(m_tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
+    double tool_speed_hz = static_cast<double>(m_tool_speed_rpm) / 60.0 + m_tool_interaction_hz;
+
+    applyNotchFilter(tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
   }
   else
   {
@@ -393,11 +393,11 @@ applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::
 {
   double Q = f0 / m_bw;
   double w0 = 2.0* M_PI * f0 / m_fs;
-  double m_alpha_notch = sin(w0) / (2.0 * Q);
+  double alpha_notch = sin(w0) / (2.0 * Q);
 
-  double a0 = 1.0 + m_alpha_notch;
+  double a0 = 1.0 + alpha_notch;
   double a1 = -2.0 * cos(w0) / a0;
-  double a2 = (1.0 - m_alpha_notch) / a0;
+  double a2 = (1.0 - alpha_notch) / a0;
   double b0 = 1.0 / a0;
   double b1 = -2.0 * cos(w0) / a0;
   double b2 = 1.0 / a0;

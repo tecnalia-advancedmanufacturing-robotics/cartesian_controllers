@@ -136,8 +136,7 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
 
     bool m_tool_speed_initialized;
     uint16_t m_tool_speed_rpm;
-    double m_tool_speed_hz;
-    const double m_tool_interaction_hz = 1.0;
+    const double m_tool_interaction_hz = 1.02;
 
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_publisher;
     realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
