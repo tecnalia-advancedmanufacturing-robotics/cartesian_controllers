@@ -45,6 +45,7 @@
 
 // ROS
 #include <std_srvs/Trigger.h>
+#include <std_msgs/UInt16.h>
 
 // Dynamic reconfigure
 #include <dynamic_reconfigure/server.h>
@@ -108,10 +109,14 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
 
     void targetWrenchCallback(const geometry_msgs::WrenchStamped& wrench);
     void ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench);
+    void toolSpeedCallback(const std_msgs::UInt16& speed);
+    void applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
+    void applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
     bool signalTaringCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
     ros::ServiceServer    m_signal_taring_server;
     ros::Subscriber       m_target_wrench_subscriber;
+    ros::Subscriber       m_tool_speed_subscriber;
     ros::Subscriber       m_ft_sensor_wrench_subscriber;
     ctrl::Vector6D        m_target_wrench;
     ctrl::Vector6D        m_ft_sensor_wrench;
@@ -120,6 +125,21 @@ class CartesianForceController : public virtual cartesian_controller_base::Carte
     ctrl::Vector3D        m_center_of_mass;
     std::string           m_ft_sensor_ref_link;
     KDL::Frame            m_ft_sensor_transform;
+
+    bool m_lp_filter_initialized;
+    bool m_notch_filter_initialized;
+    ctrl::Vector6D m_ft_sensor_lp_filt_wrench;
+    ctrl::Vector6D m_ft_sensor_notch_filt_wrench;
+    double m_fs;
+    double m_fc;
+    double m_bw;
+
+    bool m_tool_speed_initialized;
+    uint16_t m_tool_speed_rpm;
+    const double m_tool_interaction_hz = 1.02;
+
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_publisher;
+    realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
 
     /**
      * Allow users to choose whether to specify their target wrenches in the
