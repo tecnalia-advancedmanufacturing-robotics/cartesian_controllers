@@ -183,6 +183,8 @@ class CartesianControllerBase : public controller_interface::Controller<Hardware
     int m_iterations;
     std::vector<hardware_interface::JointHandle>      m_joint_handles;
 
+    double m_joints_limits_tol;
+
     /**
      * Whether or not to publish the controller's current end-effector pose and
      * twist.
