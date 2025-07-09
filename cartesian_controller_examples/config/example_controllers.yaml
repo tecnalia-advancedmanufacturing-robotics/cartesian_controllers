@@ -34,6 +34,10 @@ my_cartesian_force_controller:
     - joint6
     joints_limits_tolerance: 0.0 # rad
 
+    filter_fs: 500.0
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
+
     solver:
         error_scale: 0.5
 
@@ -61,6 +65,10 @@ my_cartesian_compliance_controller:
     - joint5
     - joint6
     joints_limits_tolerance: 0.1745 # rad
+
+    filter_fs: 500.0
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
 
     stiffness:  # w.r.t. compliance_ref_link
         trans_x: 500
