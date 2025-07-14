@@ -53,7 +53,11 @@ namespace cartesian_force_controller
 template <class HardwareInterface>
 CartesianForceController<HardwareInterface>::
 CartesianForceController()
-: Base::CartesianControllerBase(), m_hand_frame_control(true)
+: Base::CartesianControllerBase()
+, m_hand_frame_control(true)
+, m_lp_filter_initialized(false)
+, m_notch_filter_initialized(false)
+, m_tool_speed_initialized(false)
 {
 }
 
@@ -84,6 +88,29 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
   m_signal_taring_server = nh.advertiseService("signal_taring",&CartesianForceController<HardwareInterface>::signalTaringCallback,this);
   m_target_wrench_subscriber = nh.subscribe("target_wrench",2,&CartesianForceController<HardwareInterface>::targetWrenchCallback,this);
   m_ft_sensor_wrench_subscriber = nh.subscribe("ft_sensor_wrench",2,&CartesianForceController<HardwareInterface>::ftSensorWrenchCallback,this);
+  m_tool_speed_subscriber = nh.subscribe("mirka_driver/average_speed", 2,&CartesianForceController<HardwareInterface>::toolSpeedCallback, this);
+
+  m_ft_sensor_wrench_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench", 3);
+  m_ft_sensor_wrench_filt_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "wrench_filtered", 3);
+
+  // Initialize Filters: sampling frequency and cut-off frequency
+  if (!nh.getParam("filter_fs",m_fs))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_fs" << " from parameter server");
+    return false;
+  }
+  if (!nh.getParam("filter_lp_fc",m_fc))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_lp_fc" << " from parameter server");
+    return false;
+  }
+  if (!nh.getParam("filter_n_bw",m_bw))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/filter_n_bw" << " from parameter server");
+    return false;
+  }
 
   // Initialize tool and gravity compensation
   std::map<std::string, double> gravity;
@@ -254,6 +281,20 @@ targetWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
 
 template <class HardwareInterface>
 void CartesianForceController<HardwareInterface>::
+toolSpeedCallback(const std_msgs::UInt16& speed)
+{
+    if (speed.data < 3000)
+  {
+    m_tool_speed_initialized = false;
+    return;
+  }
+
+  m_tool_speed_rpm = speed.data;
+  m_tool_speed_initialized = true;
+}
+
+template <class HardwareInterface>
+void CartesianForceController<HardwareInterface>::
 ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
 {
   KDL::Wrench tmp;
@@ -267,12 +308,132 @@ ftSensorWrenchCallback(const geometry_msgs::WrenchStamped& wrench)
   // Compute how the measured wrench appears in the frame of interest.
   tmp = m_ft_sensor_transform * tmp;
 
-  m_ft_sensor_wrench[0] = tmp[0];
-  m_ft_sensor_wrench[1] = tmp[1];
-  m_ft_sensor_wrench[2] = tmp[2];
-  m_ft_sensor_wrench[3] = tmp[3];
-  m_ft_sensor_wrench[4] = tmp[4];
-  m_ft_sensor_wrench[5] = tmp[5];
+  if(m_tool_speed_initialized)
+  {
+    ctrl::Vector6D tmp_vec;
+    tmp_vec.head<3>() = Eigen::Vector3d(tmp.force.x(), tmp.force.y(), tmp.force.z());
+    tmp_vec.tail<3>() = Eigen::Vector3d(tmp.torque.x(), tmp.torque.y(), tmp.torque.z());
+    double tool_speed_hz = static_cast<double>(m_tool_speed_rpm) / 60.0 + m_tool_interaction_hz;
+
+    applyNotchFilter(tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
+  }
+  else
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      m_ft_sensor_notch_filt_wrench[i] = tmp[i];
+    }
+  }
+
+  applyLPFilter(m_ft_sensor_notch_filt_wrench, m_ft_sensor_lp_filt_wrench);
+
+  for(int i = 0; i < 6; i++)
+  {
+    m_ft_sensor_wrench[i] = m_ft_sensor_lp_filt_wrench[i];
+  }
+
+  // Publish
+  auto now = ros::Time::now();
+  if (m_ft_sensor_wrench_publisher->trylock())
+  {
+    m_ft_sensor_wrench_publisher->msg_.header.stamp = now;
+    m_ft_sensor_wrench_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.x = tmp[0];
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.y = tmp[1];
+    m_ft_sensor_wrench_publisher->msg_.wrench.force.z = tmp[2];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.x = tmp[3];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.y = tmp[4];
+    m_ft_sensor_wrench_publisher->msg_.wrench.torque.z = tmp[5];
+
+    m_ft_sensor_wrench_publisher->unlockAndPublish();
+  }
+  if (m_ft_sensor_wrench_filt_publisher->trylock())
+  {
+    m_ft_sensor_wrench_filt_publisher->msg_.header.stamp = now;
+    m_ft_sensor_wrench_filt_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.x = m_ft_sensor_wrench[0];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.y = m_ft_sensor_wrench[1];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.force.z = m_ft_sensor_wrench[2];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.x = m_ft_sensor_wrench[3];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.y = m_ft_sensor_wrench[4];
+    m_ft_sensor_wrench_filt_publisher->msg_.wrench.torque.z = m_ft_sensor_wrench[5];
+
+    m_ft_sensor_wrench_filt_publisher->unlockAndPublish();
+  }
+}
+
+template <class HardwareInterface>
+void CartesianForceController<HardwareInterface>::
+applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
+{
+  double m_alpha = (2 * M_PI * m_fc)/(2 * M_PI * m_fc + m_fs);
+
+  if (!m_lp_filter_initialized)
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      filtered_wrench[i] = measured_wrench[i];
+    }
+    m_lp_filter_initialized = true;
+  }
+  else
+  {
+    // Apply LP filter: y[n] = alpha*x[n] + (1-alpha)*y[n-1]
+    for(int i = 0; i < 6; i++)
+    {
+      filtered_wrench[i] = m_alpha * measured_wrench[i] + (1 - m_alpha) * filtered_wrench[i];
+    }
+  }
+  return;
+}
+
+template <class HardwareInterface>
+void CartesianForceController<HardwareInterface>::
+applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
+{
+  double Q = f0 / m_bw;
+  double w0 = 2.0* M_PI * f0 / m_fs;
+  double alpha_notch = sin(w0) / (2.0 * Q);
+
+  double a0 = 1.0 + alpha_notch;
+  double a1 = -2.0 * cos(w0) / a0;
+  double a2 = (1.0 - alpha_notch) / a0;
+  double b0 = 1.0 / a0;
+  double b1 = -2.0 * cos(w0) / a0;
+  double b2 = 1.0 / a0;
+
+  static double m_notch_x[6][3] = {{0.0}};
+  static double m_notch_y[6][3] = {{0.0}};
+  
+  if(!m_notch_filter_initialized)
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      for(int j = 0; j < 3; j++)
+      {
+        m_notch_x[i][j] = measured_wrench[i];
+        m_notch_y[i][j] = measured_wrench[i];
+      }
+    }
+    m_notch_filter_initialized = true;
+  }
+  else
+  {
+    for(int i = 0; i < 6; i++)
+    {
+      m_notch_x[i][2] = m_notch_x[i][1];
+      m_notch_x[i][1] = m_notch_x[i][0];
+      m_notch_x[i][0] = measured_wrench[i];
+
+      m_notch_y[i][2] = m_notch_y[i][1];
+      m_notch_y[i][1] = m_notch_y[i][0];
+      // Apply Notch filter: y[n] = b0*x[n] + b1*x[n-1] + b2*x[n-2] - a1*y[n-1] - a2*y[n-2]
+      m_notch_y[i][0] = b0 * m_notch_x[i][0] + b1 * m_notch_x[i][1] + b2 * m_notch_x[i][2] - a1 * m_notch_y[i][1] - a2 * m_notch_y[i][2];
+
+      filtered_wrench[i] = m_notch_y[i][0];
+    }
+  }
+  return;
 }
 
 template <class HardwareInterface>
