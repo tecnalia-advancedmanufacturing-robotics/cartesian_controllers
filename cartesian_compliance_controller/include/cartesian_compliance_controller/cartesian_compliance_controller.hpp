@@ -98,6 +98,11 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
         ros::NodeHandle(nh.getNamespace() + "/stiffness")));
   m_dyn_conf_server->setCallback(m_callback_type);
 
+  m_motion_err_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "error_m", 3);
+  m_force_err_publisher =
+      std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::WrenchStamped> >(nh, "error_f", 3);
+
   return true;
 }
 
@@ -149,13 +154,45 @@ template <class HardwareInterface>
 ctrl::Vector6D CartesianComplianceController<HardwareInterface>::
 computeComplianceError()
 {
-  ctrl::Vector6D net_force =
+  // ctrl::Vector6D net_force =
 
-    // Spring force in base orientation
-    Base::displayInBaseLink(m_stiffness,m_compliance_ref_link) * MotionBase::computeMotionError()
+  //   // Spring force in base orientation
+  //   Base::displayInBaseLink(m_stiffness,m_compliance_ref_link) * MotionBase::computeMotionError()
 
-    // Sensor and target force in base orientation
-    + ForceBase::computeForceError();
+  //   // Sensor and target force in base orientation
+  //   + ForceBase::computeForceError();
+
+  ctrl::Vector6D from_motion_force = Base::displayInBaseLink(m_stiffness,m_compliance_ref_link) * MotionBase::computeMotionError();
+  ctrl::Vector6D from_force_force = ForceBase::computeForceError();
+  ctrl::Vector6D net_force = from_motion_force + from_force_force;
+
+  auto now = ros::Time::now();
+  if (m_motion_err_publisher->trylock())
+  {
+    m_motion_err_publisher->msg_.header.stamp = now;
+    m_motion_err_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_motion_err_publisher->msg_.wrench.force.x = from_motion_force[0];
+    m_motion_err_publisher->msg_.wrench.force.y = from_motion_force[1];
+    m_motion_err_publisher->msg_.wrench.force.z = from_motion_force[2];
+    m_motion_err_publisher->msg_.wrench.torque.x = from_motion_force[3];
+    m_motion_err_publisher->msg_.wrench.torque.y = from_motion_force[4];
+    m_motion_err_publisher->msg_.wrench.torque.z = from_motion_force[5];
+
+    m_motion_err_publisher->unlockAndPublish();
+  }
+  if (m_force_err_publisher->trylock())
+  {
+    m_force_err_publisher->msg_.header.stamp = now;
+    m_force_err_publisher->msg_.header.frame_id = Base::m_end_effector_link;
+    m_force_err_publisher->msg_.wrench.force.x = from_force_force[0];
+    m_force_err_publisher->msg_.wrench.force.y = from_force_force[1];
+    m_force_err_publisher->msg_.wrench.force.z = from_force_force[2];
+    m_force_err_publisher->msg_.wrench.torque.x = from_force_force[3];
+    m_force_err_publisher->msg_.wrench.torque.y = from_force_force[4];
+    m_force_err_publisher->msg_.wrench.torque.z = from_force_force[5];
+
+    m_force_err_publisher->unlockAndPublish();
+  }
 
   return net_force;
 }

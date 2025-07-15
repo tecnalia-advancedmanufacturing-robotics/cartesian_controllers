@@ -145,6 +145,12 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
     throw std::runtime_error(error);
   }
 
+  if (!nh.getParam("joints_limits_tolerance",m_joints_limits_tol))
+  {
+    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/joints_limits_tolerance" << " from parameter server");
+    return false;
+  }
+
   // Parse joint limits
   KDL::JntArray upper_pos_limits(m_joint_names.size());
   KDL::JntArray lower_pos_limits(m_joint_names.size());
@@ -165,8 +171,8 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
     else
     {
       // Non-existent urdf limits are zero initialized
-      upper_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->upper;
-      lower_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->lower;
+      upper_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->upper + m_joints_limits_tol;
+      lower_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->lower - m_joints_limits_tol;
     }
   }
 

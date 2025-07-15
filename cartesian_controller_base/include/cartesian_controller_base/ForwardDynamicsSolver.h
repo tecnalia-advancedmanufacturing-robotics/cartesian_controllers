@@ -55,6 +55,8 @@
 // ros general
 #include <ros/ros.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
+#include <realtime_tools/realtime_publisher.h>
+#include <sensor_msgs/JointState.h>
 
 // other
 #include <vector>
@@ -143,6 +145,11 @@ class ForwardDynamicsSolver : public IKSolver
 
     std::shared_ptr<dynamic_reconfigure::Server<IKConfig> > m_dyn_conf_server;
     dynamic_reconfigure::Server<IKConfig>::CallbackType m_callback_type;
+
+    realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::JointState>
+      m_feedback_joints_init_cmd_publisher;
+    realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::JointState>
+      m_feedback_joints_cmd_publisher;
 };
 
 

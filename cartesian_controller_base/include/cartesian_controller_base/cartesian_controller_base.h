@@ -46,6 +46,7 @@
 #include <geometry_msgs/WrenchStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TwistStamped.h>
+#include <sensor_msgs/JointState.h>
 #include <realtime_tools/realtime_publisher.h>
 
 // ros_controls
@@ -181,6 +182,8 @@ class CartesianControllerBase : public controller_interface::Controller<Hardware
 
     int m_iterations;
     std::vector<hardware_interface::JointHandle>      m_joint_handles;
+
+    double m_joints_limits_tol;
 
     /**
      * Whether or not to publish the controller's current end-effector pose and

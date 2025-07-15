@@ -106,9 +106,40 @@ namespace cartesian_controller_base{
     m_current_velocities.data = m_last_velocities.data + m_current_accelerations.data * period.toSec();
     m_current_velocities.data *= 0.9;  // 10 % global damping against unwanted null space motion.
                                        // Will cause exponential slow-down without input.
+    m_future_positions.data = m_current_positions.data + m_current_velocities.data * period.toSec();
+
+    auto now = ros::Time::now();
+    if (m_feedback_joints_init_cmd_publisher->trylock())
+    {
+      m_feedback_joints_init_cmd_publisher->msg_ = sensor_msgs::JointState();
+      m_feedback_joints_init_cmd_publisher->msg_.header.stamp = now;
+      m_feedback_joints_init_cmd_publisher->msg_.header.frame_id = "arm_base_link";
+      m_feedback_joints_init_cmd_publisher->msg_.name = {"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                                                    "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"}; 
+      for (size_t i = 0; i < m_current_positions.rows(); ++i)
+      {
+          m_feedback_joints_init_cmd_publisher->msg_.position.push_back(m_current_positions(i));
+          m_feedback_joints_init_cmd_publisher->msg_.velocity.push_back(m_current_velocities(i));
+      }
+      m_feedback_joints_init_cmd_publisher->unlockAndPublish();
+    }
 
     // Make sure positions stay in allowed margins
     applyJointLimits();
+
+    if (m_feedback_joints_cmd_publisher->trylock())
+    {
+      m_feedback_joints_cmd_publisher->msg_ = sensor_msgs::JointState();
+      m_feedback_joints_cmd_publisher->msg_.header.stamp = now;
+      m_feedback_joints_cmd_publisher->msg_.header.frame_id = "arm_base_link";
+      m_feedback_joints_cmd_publisher->msg_.name = {"shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                                                    "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"}; 
+      for (size_t i = 0; i < m_current_positions.rows(); ++i) {
+          m_feedback_joints_cmd_publisher->msg_.position.push_back(m_current_positions(i));
+          m_feedback_joints_cmd_publisher->msg_.velocity.push_back(m_current_velocities(i));
+      }
+      m_feedback_joints_cmd_publisher->unlockAndPublish();
+    }
 
     // Apply results
     trajectory_msgs::JointTrajectoryPoint control_cmd;
@@ -163,6 +194,11 @@ namespace cartesian_controller_base{
           ros::NodeHandle(nh.getNamespace() + "/solver/forward_dynamics")));
 
     m_dyn_conf_server->setCallback(m_callback_type);
+
+    m_feedback_joints_init_cmd_publisher =
+    std::make_shared<realtime_tools::RealtimePublisher<sensor_msgs::JointState> >(nh, "joints_init_cmd", 3);
+    m_feedback_joints_cmd_publisher =
+    std::make_shared<realtime_tools::RealtimePublisher<sensor_msgs::JointState> >(nh, "joints_cmd", 3);
 
     ROS_INFO("Forward dynamics solver initialized");
     ROS_INFO("Forward dynamics solver has control over %i joints", m_number_joints);

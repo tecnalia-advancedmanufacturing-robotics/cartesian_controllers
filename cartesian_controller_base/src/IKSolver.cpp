@@ -89,6 +89,7 @@ namespace cartesian_controller_base{
       m_current_accelerations(i)  = 0.0;
 
       m_last_positions(i)         = m_current_positions(i);
+      m_future_positions(i)       = m_current_positions(i);
       m_last_velocities(i)        = m_current_velocities(i);
     }
     return true;
@@ -101,6 +102,7 @@ namespace cartesian_controller_base{
     {
       m_current_positions(i) = joint_handles[i].getPosition();
       m_last_positions(i)    = m_current_positions(i);
+      m_future_positions(i)  = m_current_positions(i);
     }
   }
 
@@ -117,6 +119,7 @@ namespace cartesian_controller_base{
     m_current_velocities.data    = ctrl::VectorND::Zero(m_number_joints);
     m_current_accelerations.data = ctrl::VectorND::Zero(m_number_joints);
     m_last_positions.data        = ctrl::VectorND::Zero(m_number_joints);
+    m_future_positions.data      = ctrl::VectorND::Zero(m_number_joints);
     m_last_velocities.data       = ctrl::VectorND::Zero(m_number_joints);
     m_upper_pos_limits           = upper_pos_limits;
     m_lower_pos_limits           = lower_pos_limits;
@@ -153,6 +156,15 @@ namespace cartesian_controller_base{
         // Joint marked as continuous.
         continue;
       }
+
+      bool outside_lower_limit = (m_current_positions(i) <= m_lower_pos_limits(i)) || (m_future_positions(i) <= m_lower_pos_limits(i));
+      bool outside_upper_limit  = (m_current_positions(i) >= m_upper_pos_limits(i)) || (m_future_positions(i) >= m_upper_pos_limits(i));
+
+      if ((outside_lower_limit && m_current_velocities(i) < 0.0) || (outside_upper_limit && m_current_velocities(i) > 0.0))
+      {
+        m_current_velocities(i) = 0.0;
+      }
+
       m_current_positions(i) = std::clamp(
           m_current_positions(i),m_lower_pos_limits(i),m_upper_pos_limits(i));
     }
