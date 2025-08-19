@@ -45,6 +45,7 @@
 
 // ROS
 #include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/JointState.h>
 
 // ros_controls
 #include <controller_interface/controller.h>
@@ -100,6 +101,8 @@ class JointToCartesianController
     KDL::JntArray              m_velocities;
     std::vector<std::string>   m_joint_names;
     ros::Publisher             m_pose_publisher;
+    ros::Publisher             m_position_publisher;
+    ros::Publisher             handles_publisher;
 
     std::unique_ptr<JointControllerAdapter> m_controller_adapter;
     std::thread m_adapter_thread;
