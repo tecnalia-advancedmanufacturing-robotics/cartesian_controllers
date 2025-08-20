@@ -117,6 +117,7 @@ bool JointToCartesianController::init(hardware_interface::JointStateInterface* h
   m_pose_publisher = nh.advertise<geometry_msgs::PoseStamped>(m_target_frame_topic,10);
   m_position_publisher = nh.advertise<sensor_msgs::JointState>(m_target_frame_topic + "/m_position",10);
   handles_publisher = nh.advertise<sensor_msgs::JointState>(m_target_frame_topic + "/handles",10);
+  distance_publisher = nh.advertise<geometry_msgs::PointStamped>(m_target_frame_topic + "/distance",10);
 
   // Build a kinematic chain of the robot
   if (!robot_model.initString(robot_description))
@@ -253,6 +254,21 @@ void JointToCartesianController::update(const ros::Time& time, const ros::Durati
       distance += std::pow(m_positions.data(i) - m_joint_state_handles[i].getPosition(), 2);
     }
     distance = std::sqrt(distance);
+
+    geometry_msgs::PointStamped distance_msg;
+    distance_msg.header.stamp = ros::Time::now();
+    distance_msg.point.x = distance;
+    distance_publisher.publish(distance_msg);
+
+    // Publish warning in case of critical distance
+    if (distance > m_distance_critical_threshold)
+    {
+      ROS_ERROR_STREAM("Critical joint deviation from target: " << distance*180.0/M_PI << " degrees !!!");
+    }
+    else if (distance > m_distance_threshold)
+    {
+      ROS_WARN_STREAM("Joint deviation from target is " << distance*180.0/M_PI << " degrees.");
+    }
 
     m_mutex.unlock();
   }

@@ -45,6 +45,7 @@
 
 // ROS
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/JointState.h>
 
 // ros_controls
@@ -103,6 +104,10 @@ class JointToCartesianController
     ros::Publisher             m_pose_publisher;
     ros::Publisher             m_position_publisher;
     ros::Publisher             handles_publisher;
+    ros::Publisher             distance_publisher;
+
+    const double m_distance_threshold = 15.0*M_PI/180.0;
+    const double m_distance_critical_threshold = 20.0*M_PI/180.0;
 
     std::unique_ptr<JointControllerAdapter> m_controller_adapter;
     std::thread m_adapter_thread;
