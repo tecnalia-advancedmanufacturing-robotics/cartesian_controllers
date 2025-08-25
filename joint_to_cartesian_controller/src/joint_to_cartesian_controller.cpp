@@ -263,7 +263,7 @@ void JointToCartesianController::update(const ros::Time& time, const ros::Durati
     // Publish warning in case of critical distance
     if (distance > m_distance_critical_threshold)
     {
-      ROS_ERROR_STREAM("Critical joint deviation from target: " << distance*180.0/M_PI << " degrees !!!");
+      ROS_ERROR_STREAM("Critical joint deviation from target: " << distance*180.0/M_PI << " degrees.");
     }
     else if (distance > m_distance_threshold)
     {

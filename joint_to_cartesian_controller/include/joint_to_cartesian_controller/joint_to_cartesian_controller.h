@@ -106,8 +106,8 @@ class JointToCartesianController
     ros::Publisher             handles_publisher;
     ros::Publisher             distance_publisher;
 
-    const double m_distance_threshold = 15.0*M_PI/180.0;
-    const double m_distance_critical_threshold = 20.0*M_PI/180.0;
+    const double m_distance_threshold = 20.0*M_PI/180.0;
+    const double m_distance_critical_threshold = 40.0*M_PI/180.0;
 
     std::unique_ptr<JointControllerAdapter> m_controller_adapter;
     std::thread m_adapter_thread;
