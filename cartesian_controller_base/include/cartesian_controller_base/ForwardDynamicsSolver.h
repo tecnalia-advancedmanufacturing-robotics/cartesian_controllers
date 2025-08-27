@@ -54,6 +54,8 @@
 #include <vector>
 
 #include "rclcpp/node.hpp"
+#include <realtime_tools/realtime_publisher.h>
+#include <sensor_msgs/msg/joint_state.hpp>
 
 namespace cartesian_controller_base
 {
@@ -128,6 +130,12 @@ private:
      * behavior. Near singularities, a bigger value leads to smoother motion.
      */
   std::atomic<double> m_min = 0.1;
+
+  // Debug publishers
+  realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::msg::JointState>
+    m_feedback_joints_init_cmd_publisher;
+  realtime_tools::RealtimePublisherSharedPtr<sensor_msgs::msg::JointState>
+    m_feedback_joints_cmd_publisher;
 };
 
 }  // namespace cartesian_controller_base

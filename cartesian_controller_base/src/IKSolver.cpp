@@ -76,6 +76,7 @@ bool IKSolver::setStartState(
       m_current_velocities(i) = 0.0;
       m_current_accelerations(i) = 0.0;
       m_last_positions(i) = m_current_positions(i);
+      m_future_positions(i) = m_current_positions(i);
       m_last_velocities(i) = m_current_velocities(i);
     }
     else
@@ -97,6 +98,7 @@ void IKSolver::synchronizeJointPositions(
     if (joint_pos_handles[i].get().get_interface_name() == hardware_interface::HW_IF_POSITION)
     {
       m_current_positions(i) = joint_pos_handles[i].get().get_value();
+      m_future_positions(i) = m_current_positions(i);
       m_last_positions(i) = m_current_positions(i);
     }
   }
@@ -113,6 +115,7 @@ bool IKSolver::init(std::shared_ptr<rclcpp_lifecycle::LifecycleNode> nh, const K
   m_current_velocities.data = ctrl::VectorND::Zero(m_number_joints);
   m_current_accelerations.data = ctrl::VectorND::Zero(m_number_joints);
   m_last_positions.data = ctrl::VectorND::Zero(m_number_joints);
+  m_future_positions.data = ctrl::VectorND::Zero(m_number_joints);
   m_last_velocities.data = ctrl::VectorND::Zero(m_number_joints);
   m_upper_pos_limits = upper_pos_limits;
   m_lower_pos_limits = lower_pos_limits;
@@ -149,6 +152,15 @@ void IKSolver::applyJointLimits()
       // Joint marked as continuous.
       continue;
     }
+
+    bool outside_lower_limit = (m_current_positions(i) <= m_lower_pos_limits(i)) || (m_future_positions(i) <= m_lower_pos_limits(i));
+    bool outside_upper_limit  = (m_current_positions(i) >= m_upper_pos_limits(i)) || (m_future_positions(i) >= m_upper_pos_limits(i));
+
+    if ((outside_lower_limit && m_current_velocities(i) < 0.0) || (outside_upper_limit && m_current_velocities(i) > 0.0))
+    {
+      m_current_velocities(i) = 0.0;
+    }
+
     m_current_positions(i) =
       std::clamp(m_current_positions(i), m_lower_pos_limits(i), m_upper_pos_limits(i));
   }
