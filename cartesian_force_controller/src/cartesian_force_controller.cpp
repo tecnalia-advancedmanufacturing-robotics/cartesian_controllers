@@ -47,7 +47,7 @@
 namespace cartesian_force_controller
 {
 CartesianForceController::CartesianForceController()
-: Base::CartesianControllerBase(), m_hand_frame_control(true), m_lp_filter_initialized(false), m_notch_filter_initialized(false)
+: Base::CartesianControllerBase(), m_hand_frame_control(true), m_lp_filter_initialized(false), m_notch_filter_initialized(false), m_tool_speed_initialized(false)
 {
 }
 
@@ -89,8 +89,6 @@ CartesianForceController::on_configure(const rclcpp_lifecycle::State & previous_
   // Make sure sensor wrenches are interpreted correctly
   setFtSensorReferenceFrame(Base::m_end_effector_link);
 
-  m_fs = 500.0;
-
   m_ft_sensor_wrench_publisher =
   std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::msg::WrenchStamped>>(
     get_node()->create_publisher<geometry_msgs::msg::WrenchStamped>(
@@ -103,16 +101,36 @@ CartesianForceController::on_configure(const rclcpp_lifecycle::State & previous_
   m_target_wrench_subscriber = get_node()->create_subscription<geometry_msgs::msg::WrenchStamped>(
     get_node()->get_name() + std::string("/target_wrench"), 10,
     std::bind(&CartesianForceController::targetWrenchCallback, this, std::placeholders::_1));
-
   m_ft_sensor_wrench_subscriber =
     get_node()->create_subscription<geometry_msgs::msg::WrenchStamped>(
-      get_node()->get_name() + std::string("/ft_sensor_wrench"), 10,
+      std::string("/ft_sensor_wrench"), 10,
       std::bind(&CartesianForceController::ftSensorWrenchCallback, this, std::placeholders::_1));
-
   m_tool_speed_subscriber =
     get_node()->create_subscription<std_msgs::msg::UInt16>(
-      get_node()->get_name() + std::string("/average_speed"), 10,
+      std::string("/mirka_driver/average_speed"), 10,
       std::bind(&CartesianForceController::toolSpeedCallback, this, std::placeholders::_1));
+
+  // Initialize Filters: sampling frequency, cut-off frequency, bandwidth
+  if(!get_node()->has_parameter("filter_fs"))
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "filter_fs parameter is empty");
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+  }
+  m_fs = get_node()->get_parameter("filter_fs").as_double();
+
+  if(!get_node()->has_parameter("filter_lp_fc"))
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "filter_lp_fc parameter is empty");
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+  }
+  m_fc = get_node()->get_parameter("filter_lp_fc").as_double();
+
+  if(!get_node()->has_parameter("filter_n_bw"))
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "filter_n_bw parameter is empty");
+    return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
+  }
+  m_bw = get_node()->get_parameter("filter_n_bw").as_double();
 
   m_target_wrench.setZero();
   m_ft_sensor_wrench.setZero();
@@ -220,6 +238,20 @@ void CartesianForceController::targetWrenchCallback(
   m_target_wrench[5] = wrench->wrench.torque.z;
 }
 
+void CartesianForceController::toolSpeedCallback(const std_msgs::msg::UInt16::SharedPtr speed)
+{
+  if (!this->isActive() || speed->data < 3000)
+  {
+    m_tool_speed_initialized = false;
+    return;
+  }
+
+  m_tool_speed_rpm = speed->data;
+  m_tool_speed_initialized = true;
+
+  return;
+}
+
 void CartesianForceController::ftSensorWrenchCallback(
   const geometry_msgs::msg::WrenchStamped::SharedPtr wrench)
 {
@@ -254,7 +286,10 @@ void CartesianForceController::ftSensorWrenchCallback(
     ctrl::Vector6D tmp_vec;
     tmp_vec.head<3>() = Eigen::Vector3d(tmp.force.x(), tmp.force.y(), tmp.force.z());
     tmp_vec.tail<3>() = Eigen::Vector3d(tmp.torque.x(), tmp.torque.y(), tmp.torque.z());
-    applyNotchFilter(m_tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
+
+    double tool_speed_hz = static_cast<double>(m_tool_speed_rpm) / 60.0 + m_tool_interaction_hz;
+
+    applyNotchFilter(tool_speed_hz, tmp_vec, m_ft_sensor_notch_filt_wrench);
   }
   else
   {
@@ -301,31 +336,9 @@ void CartesianForceController::ftSensorWrenchCallback(
   }
 }
 
-void CartesianForceController::toolSpeedCallback(const std_msgs::msg::UInt16::SharedPtr speed)
-{
-  if (!this->isActive())
-  {
-    m_tool_speed_initialized = false;
-    return;
-  }
-
-  m_tool_speed_rpm = speed->data;
-  m_tool_speed_hz = static_cast<double>(m_tool_speed_rpm) / 60.0 + m_tool_interaction_hz;
-
-  if (m_tool_speed_rpm < 3000)
-  {
-    m_tool_speed_initialized = false;
-    return;
-  }
-
-  m_tool_speed_initialized = true;
-  return;
-}
-
 void CartesianForceController::applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
 {
-  double fc = 10.0;
-  double m_alpha = (2 * M_PI * fc)/(2 * M_PI * fc + m_fs);
+  double m_alpha = (2 * M_PI * m_fc)/(2 * M_PI * m_fc + m_fs);
 
   if (!m_lp_filter_initialized)
   {
@@ -343,12 +356,12 @@ void CartesianForceController::applyLPFilter(const ctrl::Vector6D& measured_wren
       filtered_wrench[i] = m_alpha * measured_wrench[i] + (1 - m_alpha) * filtered_wrench[i];
     }
   }
+  return;
 }
 
 void CartesianForceController::applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench)
 {
-  double bw = 15.0;
-  double Q = f0 / bw;
+  double Q = f0 / m_bw;
   double w0 = 2.0* M_PI * f0 / m_fs;
   double m_alpha_notch = sin(w0) / (2.0 * Q);
 

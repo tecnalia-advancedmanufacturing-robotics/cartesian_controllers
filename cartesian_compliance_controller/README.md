@@ -95,6 +95,10 @@ cartesian_compliance_controller:
     command_interfaces:
       - position
         #- velocity
+    
+    filter_fs: 500.0 # update rate
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
 
     stiffness:  # w.r.t. compliance_ref_link
         trans_x: 500
