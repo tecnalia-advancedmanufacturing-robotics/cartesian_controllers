@@ -46,6 +46,7 @@
 #include <controller_interface/controller_interface.hpp>
 
 #include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "std_msgs/msg/u_int16.hpp"
 
 namespace cartesian_force_controller
 {
@@ -105,18 +106,32 @@ protected:
 private:
   void targetWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
   void ftSensorWrenchCallback(const geometry_msgs::msg::WrenchStamped::SharedPtr wrench);
+  void toolSpeedCallback(const std_msgs::msg::UInt16::SharedPtr speed);
+  void applyLPFilter(const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
+  void applyNotchFilter(const double& f0, const ctrl::Vector6D& measured_wrench, ctrl::Vector6D& filtered_wrench);
 
-  bool m_filter_initialized;
-  ctrl::Vector6D m_ft_sensor_filt_wrench;
   realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::msg::WrenchStamped> m_ft_sensor_wrench_publisher;
   realtime_tools::RealtimePublisherSharedPtr<geometry_msgs::msg::WrenchStamped> m_ft_sensor_wrench_filt_publisher;
-
   rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr m_target_wrench_subscriber;
   rclcpp::Subscription<geometry_msgs::msg::WrenchStamped>::SharedPtr m_ft_sensor_wrench_subscriber;
+  rclcpp::Subscription<std_msgs::msg::UInt16>::SharedPtr m_tool_speed_subscriber;
+
   ctrl::Vector6D m_target_wrench;
   ctrl::Vector6D m_ft_sensor_wrench;
   std::string m_ft_sensor_ref_link;
   KDL::Frame m_ft_sensor_transform;
+
+  bool m_lp_filter_initialized;
+  bool m_notch_filter_initialized;
+  ctrl::Vector6D m_ft_sensor_lp_filt_wrench;
+  ctrl::Vector6D m_ft_sensor_notch_filt_wrench;
+  double m_fs;
+  double m_fc;
+  double m_bw;
+
+  bool m_tool_speed_initialized;
+  uint16_t m_tool_speed_rpm;
+  const double m_tool_interaction_hz = 1.02;
 
   /**
      * Allow users to choose whether to specify their target wrenches in the

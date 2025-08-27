@@ -86,6 +86,10 @@ cartesian_force_controller:
       - position
         #- velocity
 
+    filter_fs: 500.0 # update rate
+    filter_lp_fc: 10.0
+    filter_n_bw: 15.0
+
     solver:
         error_scale: 0.5
 
