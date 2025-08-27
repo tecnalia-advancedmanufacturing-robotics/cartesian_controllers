@@ -235,6 +235,9 @@ private:
   SpatialPDController m_spatial_controller;
   ctrl::Vector6D m_cartesian_input;
 
+  // Joints limits tolerance in rad
+  double m_joints_limits_tol;
+
   // Against multi initialization in multi inheritance scenarios
   bool m_initialized = {false};
   bool m_configured = {false};

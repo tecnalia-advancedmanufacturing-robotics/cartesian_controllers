@@ -184,6 +184,17 @@ CartesianControllerBase::on_configure(const rclcpp_lifecycle::State & previous_s
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
   }
 
+  // Get joint limits tolerance parameter
+  if(!get_node()->has_parameter("joints_limits_tolerance"))
+  {
+    RCLCPP_WARN(get_node()->get_logger(), "joints_limits_tolerance is empty: setting to 0");
+    m_joints_limits_tol = 0.0;
+  }
+  else
+  {
+    m_joints_limits_tol = get_node()->get_parameter("joints_limits_tolerance").as_double();
+  }
+
   // Parse joint limits
   KDL::JntArray upper_pos_limits(m_joint_names.size());
   KDL::JntArray lower_pos_limits(m_joint_names.size());
@@ -203,8 +214,8 @@ CartesianControllerBase::on_configure(const rclcpp_lifecycle::State & previous_s
     else
     {
       // Non-existent urdf limits are zero initialized
-      upper_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->upper;
-      lower_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->lower;
+      upper_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->upper + m_joints_limits_tol;
+      lower_pos_limits(i) = robot_model.getJoint(m_joint_names[i])->limits->lower - m_joints_limits_tol;
     }
   }
 
