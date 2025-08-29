@@ -147,8 +147,8 @@ init(HardwareInterface* hw, ros::NodeHandle& nh)
 
   if (!nh.getParam("joints_limits_tolerance",m_joints_limits_tol))
   {
-    ROS_ERROR_STREAM("Failed to load " << nh.getNamespace() + "/joints_limits_tolerance" << " from parameter server");
-    return false;
+    ROS_WARN_STREAM(nh.getNamespace() + "/joints_limits_tolerance param is empty: setting to zero");
+    m_joints_limits_tol = 0.0;
   }
 
   // Parse joint limits
