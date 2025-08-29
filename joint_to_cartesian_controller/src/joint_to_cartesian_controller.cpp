@@ -115,6 +115,14 @@ controller_interface::CallbackReturn JointToCartesianController::on_configure(
   m_pose_publisher = get_node()->create_publisher<geometry_msgs::msg::PoseStamped>(
     get_node()->get_name() + std::string("/target_frame"), 10);
 
+  m_cmd_position_publisher = get_node()->create_publisher<sensor_msgs::msg::JointState>(
+    get_node()->get_name() + std::string("/cmd_position"), 10);
+  m_curr_position_publisher = get_node()->create_publisher<sensor_msgs::msg::JointState>(
+    get_node()->get_name() + std::string("/curr_position"), 10);
+  m_distance_publisher = get_node()->create_publisher<geometry_msgs::msg::PointStamped>(
+    get_node()->get_name() + std::string("/distance"), 10);
+  
+
   // Build a kinematic chain of the robot
   if (!robot_model.initString(robot_description))
   {
@@ -243,6 +251,70 @@ controller_interface::return_type JointToCartesianController::update_and_write_c
   m_current_pose.header.stamp = get_node()->now();
   m_current_pose.header.frame_id = m_robot_base_link;
   m_pose_publisher->publish(m_current_pose);
+
+  // Compute distance between cmd_positions and current_positions
+  double distance = 0.0;
+  KDL::JntArray current_positions(reference_interfaces_.size());
+  KDL::JntArray cmd_positions(reference_interfaces_.size());
+  for (size_t i = 0; i < positions.rows(); ++i)
+  {
+    auto optional = state_interfaces_[i].get_optional();
+    if(optional)
+    {
+      current_positions(i) = optional.value();
+    }
+    if (!std::isnan(reference_interfaces_[i]))
+    {
+      cmd_positions(i) = reference_interfaces_[i];
+    }
+    else
+    {
+      cmd_positions(i) = current_positions(i);
+    }
+    distance += std::pow(cmd_positions(i) - current_positions(i), 2);
+  }
+  distance = std::sqrt(distance);
+
+  // Publish warning in case of critical distance
+  if (distance > m_distance_critical_threshold)
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(),
+                        "Critical joint deviation from target: " << distance*180.0/M_PI << " degrees.");
+  }
+  else if (distance > m_distance_threshold)
+  {
+    RCLCPP_ERROR_STREAM(get_node()->get_logger(),
+                        "Joint deviation from target is " << distance*180.0/M_PI << " degrees.");
+  }
+
+  // Publish distance
+  auto now = get_node()->now();
+  geometry_msgs::msg::PointStamped distance_msg;
+  distance_msg.header.stamp = now;
+  distance_msg.point.x = distance;
+  m_distance_publisher->publish(distance_msg);
+
+  // Publish cmd_positions
+  sensor_msgs::msg::JointState joint_state_msg;
+  joint_state_msg.header.stamp = now;
+  joint_state_msg.name = reference_interface_names_;
+  joint_state_msg.position.resize(cmd_positions.rows());
+  for (int i = 0; i < cmd_positions.rows(); ++i)
+  {
+    joint_state_msg.position[i] = cmd_positions(i);
+  }
+  m_cmd_position_publisher->publish(joint_state_msg);
+
+  // Publish current_positions
+  sensor_msgs::msg::JointState joint_state_msg2;
+  joint_state_msg2.header.stamp = now;
+  joint_state_msg2.name = reference_interface_names_;
+  joint_state_msg2.position.resize(current_positions.rows());
+  for (int i = 0; i < current_positions.rows(); ++i)
+  {
+    joint_state_msg2.position[i] = current_positions(i);
+  }
+  m_curr_position_publisher->publish(joint_state_msg2);
 
   return controller_interface::return_type::OK;
 }
