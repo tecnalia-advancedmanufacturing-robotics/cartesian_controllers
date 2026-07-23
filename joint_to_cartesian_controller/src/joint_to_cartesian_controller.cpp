@@ -151,7 +151,6 @@ controller_interface::CallbackReturn JointToCartesianController::on_configure(
 
   // The names should be in the same order as for command interfaces for easier matching
   reference_interface_names_ = command_interface_names_;
-  exported_state_interface_names_ = command_interface_names_;
   // for any case make reference interfaces size of command interfaces
   reference_interfaces_.resize(reference_interface_names_.size(),
                                std::numeric_limits<double>::quiet_NaN());
@@ -212,6 +211,14 @@ bool JointToCartesianController::on_set_chained_mode(bool /*chained_mode*/) { re
 controller_interface::return_type JointToCartesianController::update_and_write_commands(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  if (ordered_exported_state_interfaces_.size() != reference_interfaces_.size())
+  {
+    RCLCPP_ERROR_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
+                          "Exported state interfaces (%zu) != reference interfaces (%zu)",
+                          ordered_exported_state_interfaces_.size(), reference_interfaces_.size());
+    return controller_interface::return_type::ERROR;
+  }
+
   KDL::JntArray positions(reference_interfaces_.size());
 
   for (size_t i = 0; i < reference_interfaces_.size(); ++i)
@@ -322,12 +329,12 @@ controller_interface::return_type JointToCartesianController::update_and_write_c
 std::vector<hardware_interface::StateInterface>
 JointToCartesianController::on_export_state_interfaces()
 {
-  state_interfaces_values_.resize(exported_state_interface_names_.size(), 0.0);
+  state_interfaces_values_.resize(command_interface_names_.size(), 0.0);
   std::vector<hardware_interface::StateInterface> state_interfaces;
-  for (size_t i = 0; i < exported_state_interface_names_.size(); ++i)
+  for (size_t i = 0; i < command_interface_names_.size(); ++i)
   {
     state_interfaces.emplace_back(hardware_interface::StateInterface(
-      get_node()->get_name(), exported_state_interface_names_[i], &state_interfaces_values_[i]));
+      get_node()->get_name(), command_interface_names_[i], &state_interfaces_values_[i]));
   }
   return state_interfaces;
 }
