@@ -104,6 +104,24 @@ void IKSolver::synchronizeJointPositions(
   }
 }
 
+void IKSolver::pullJointPositions(
+  const std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface> > &
+    joint_pos_handles,
+  double alpha)
+{
+  alpha = std::clamp(alpha, 0.0, 1.0);
+  for (size_t i = 0; i < joint_pos_handles.size(); ++i)
+  {
+    if (joint_pos_handles[i].get().get_interface_name() == hardware_interface::HW_IF_POSITION)
+    {
+      const double measured = joint_pos_handles[i].get().get_value();
+      m_last_positions(i) += alpha * (measured - m_last_positions(i));
+      m_current_positions(i) = m_last_positions(i);
+      m_future_positions(i) = m_last_positions(i);
+    }
+  }
+}
+
 bool IKSolver::init(std::shared_ptr<rclcpp_lifecycle::LifecycleNode> nh, const KDL::Chain & chain,
                     const KDL::JntArray & upper_pos_limits, const KDL::JntArray & lower_pos_limits)
 {

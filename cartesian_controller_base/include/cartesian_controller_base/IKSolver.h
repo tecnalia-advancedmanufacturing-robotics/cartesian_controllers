@@ -138,6 +138,22 @@ public:
       joint_pos_handles);
 
   /**
+     * @brief Pull the internal model a fraction of the way toward the real robot
+     *
+     * Unlike synchronizeJointPositions(), this does not copy the measured pose
+     * into the command. alpha == 0 keeps the model where it is; alpha == 1
+     * matches a full synchronization. Joint velocity is left unchanged.
+     *
+     * @param joint_pos_handles Read handles to the joint positions.
+     * @param alpha Blend factor in [0, 1], applied as
+     *              q_model += alpha * (q_measured - q_model)
+     */
+  void pullJointPositions(
+    const std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface> > &
+      joint_pos_handles,
+    double alpha);
+
+  /**
      * @brief Initialize the solver
      *
      * @param nh A handle to the node's parameter management
