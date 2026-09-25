@@ -39,6 +39,8 @@
 
 #include <cartesian_compliance_controller/cartesian_compliance_controller.h>
 
+#include <cmath>
+
 #include "cartesian_controller_base/Utility.h"
 #include "controller_interface/controller_interface.hpp"
 
@@ -132,22 +134,27 @@ CartesianComplianceController::on_deactivate(const rclcpp_lifecycle::State & pre
 controller_interface::return_type CartesianComplianceController::update(
   const rclcpp::Time & time, const rclcpp::Duration & period)
 {
-  // Synchronize the internal model and the real robot
-  Base::m_ik_solver->synchronizeJointPositions(Base::m_joint_state_pos_handles);
+  // Activation already copies the encoders into the model once. Each cycle only
+  // pulls a fraction of the tracking error, so measured vibration is not copied
+  // into the position command.
+  const double tau =
+    get_node()->get_parameter("solver.position_pull_time_constant").as_double();
+  double alpha = 0.0;
+  if (tau > 0.0 && period.seconds() > 0.0)
+  {
+    alpha = 1.0 - std::exp(-period.seconds() / tau);
+  }
+  Base::m_ik_solver->pullJointPositions(Base::m_joint_state_pos_handles, alpha);
 
   // Control the robot motion in such a way that the resulting net force
   // vanishes. This internal control needs some simulation time steps.
   for (int i = 0; i < Base::m_iterations; ++i)
   {
-    // The internal 'simulation time' is deliberately independent of the outer
-    // control cycle.
-    auto internal_period = rclcpp::Duration::from_seconds(0.02);
-
     // Compute the net force
     ctrl::Vector6D error = computeComplianceError();
 
-    // Turn Cartesian error into joint motion
-    Base::computeJointControlCmds(error, internal_period);
+    // Turn Cartesian error into joint motion, using the real control period
+    Base::computeJointControlCmds(error, period);
   }
 
   // Write final commands to the hardware interface
