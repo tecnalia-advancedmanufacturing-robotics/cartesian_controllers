@@ -97,6 +97,7 @@ cartesian_compliance_controller:
         error_scale: 0.5
         iterations: 1
         publish_state_feedback: True
+        position_pull_time_constant: 0.4
 
     # For all controllers, these gains are w.r.t. the robot_base_link coordinates.
     pd_gains:
@@ -130,6 +131,7 @@ cartesian_force_controller:
     solver:
         error_scale: 0.5
         publish_state_feedback: True
+        position_pull_time_constant: 0.4
 
     pd_gains:
         trans_x: {p: 0.05}
@@ -162,6 +164,7 @@ cartesian_motion_controller:
         error_scale: 1.0
         iterations: 10
         publish_state_feedback: True
+        position_pull_time_constant: 0.4
 
     pd_gains:
         trans_x: {p: 1.0}
