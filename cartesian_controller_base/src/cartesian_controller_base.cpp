@@ -45,6 +45,7 @@
 #include <kdl/jntarray.hpp>
 #include <kdl/tree.hpp>
 #include <kdl_parser/kdl_parser.hpp>
+#include <unordered_set>
 
 #include "controller_interface/controller_interface.hpp"
 #include "controller_interface/helpers.hpp"
@@ -129,7 +130,6 @@ CartesianControllerBase::on_configure(const rclcpp_lifecycle::State & previous_s
 
   // Get kinematics specific configuration
   urdf::Model robot_model;
-  KDL::Tree robot_tree;
 
 #if defined CARTESIAN_CONTROLLERS_JAZZY
   m_robot_description = this->get_robot_description();
@@ -161,12 +161,12 @@ CartesianControllerBase::on_configure(const rclcpp_lifecycle::State & previous_s
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to parse urdf model from 'robot_description'");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
   }
-  if (!kdl_parser::treeFromUrdfModel(robot_model, robot_tree))
+  if (!kdl_parser::treeFromUrdfModel(robot_model, m_robot_tree))
   {
     RCLCPP_ERROR(get_node()->get_logger(), "Failed to parse KDL tree from urdf model");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
   }
-  if (!robot_tree.getChain(m_robot_base_link, m_end_effector_link, m_robot_chain))
+  if (!m_robot_tree.getChain(m_robot_base_link, m_end_effector_link, m_robot_chain))
   {
     const std::string error =
       ""
@@ -419,7 +419,7 @@ ctrl::Vector6D CartesianControllerBase::displayInBaseLink(const ctrl::Vector6D &
   }
 
   KDL::Frame transform_kdl;
-  m_forward_kinematics_solver->JntToCart(m_ik_solver->getPositions(), transform_kdl, from);
+  fkToLink(m_ik_solver->getPositions(), transform_kdl, from);
 
   // Rotate into new reference frame
   wrench_kdl = transform_kdl.M * wrench_kdl;
@@ -439,7 +439,7 @@ ctrl::Matrix6D CartesianControllerBase::displayInBaseLink(const ctrl::Matrix6D &
 {
   // Get rotation to base
   KDL::Frame R_kdl;
-  m_forward_kinematics_solver->JntToCart(m_ik_solver->getPositions(), R_kdl, from);
+  fkToLink(m_ik_solver->getPositions(), R_kdl, from);
 
   // Adjust format
   ctrl::Matrix3D R;
@@ -466,7 +466,7 @@ ctrl::Vector6D CartesianControllerBase::displayInTipLink(const ctrl::Vector6D & 
   }
 
   KDL::Frame transform_kdl;
-  m_forward_kinematics_solver->JntToCart(m_ik_solver->getPositions(), transform_kdl, to);
+  fkToLink(m_ik_solver->getPositions(), transform_kdl, to);
 
   // Rotate into new reference frame
   wrench_kdl = transform_kdl.M.Inverse() * wrench_kdl;
@@ -479,6 +479,108 @@ ctrl::Vector6D CartesianControllerBase::displayInTipLink(const ctrl::Vector6D & 
   }
 
   return out;
+}
+
+bool CartesianControllerBase::ensureLink(const std::string & link)
+{
+  if (link.empty() || robotChainContains(link) || m_fixed_branches.count(link) != 0)
+  {
+    return !link.empty();
+  }
+
+  const auto & segments = m_robot_tree.getSegments();
+  if (m_robot_tree.getSegment(link) == segments.end())
+  {
+    return false;
+  }
+
+  std::unordered_set<std::string> chain_links;
+  chain_links.insert(m_robot_base_link);
+  for (const auto & segment : m_robot_chain.segments)
+  {
+    chain_links.insert(segment.getName());
+  }
+
+  std::string anchor;
+  std::string current = link;
+  for (size_t i = 0; i < segments.size(); ++i)
+  {
+    const auto it = m_robot_tree.getSegment(current);
+    if (it == segments.end() || it == m_robot_tree.getRootSegment())
+    {
+      break;
+    }
+    const auto parent_it = it->second.parent;
+    if (parent_it == segments.end())
+    {
+      break;
+    }
+    if (chain_links.count(parent_it->first) != 0)
+    {
+      anchor = parent_it->first;
+      break;
+    }
+    current = parent_it->first;
+  }
+  if (anchor.empty())
+  {
+    return false;
+  }
+
+  KDL::Chain branch;
+  if (!m_robot_tree.getChain(anchor, link, branch))
+  {
+    return false;
+  }
+  KDL::Frame pose = KDL::Frame::Identity();
+  for (unsigned int i = 0; i < branch.getNrOfSegments(); ++i)
+  {
+    const KDL::Segment & segment = branch.getSegment(i);
+    if (segment.getJoint().getType() != KDL::Joint::Fixed)
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(),
+        "Link '%s' is off the kinematics chain, and joint '%s' between '%s' and '%s' is not fixed",
+        link.c_str(), segment.getJoint().getName().c_str(), anchor.c_str(), link.c_str());
+      return false;
+    }
+    pose = pose * segment.pose(0.0);
+  }
+
+  m_fixed_branches[link] = FixedBranch{anchor, pose};
+  RCLCPP_INFO(
+    get_node()->get_logger(),
+    "Link '%s' is not on the kinematics chain; using the fixed transform from '%s'", link.c_str(),
+    anchor.c_str());
+  return true;
+}
+
+int CartesianControllerBase::fkToLink(
+  const KDL::JntArray & q, KDL::Frame & out, const std::string & link)
+{
+  if (!robotChainContains(link))
+  {
+    if (m_fixed_branches.find(link) == m_fixed_branches.end() && !ensureLink(link))
+    {
+      return m_forward_kinematics_solver->JntToCart(q, out, link);
+    }
+    const auto it = m_fixed_branches.find(link);
+    if (it != m_fixed_branches.end())
+    {
+      KDL::Frame anchor = KDL::Frame::Identity();
+      if (robotChainContains(it->second.anchor))
+      {
+        const int rc = m_forward_kinematics_solver->JntToCart(q, anchor, it->second.anchor);
+        if (rc < 0)
+        {
+          return rc;
+        }
+      }
+      out = anchor * it->second.offset;
+      return 0;
+    }
+  }
+  return m_forward_kinematics_solver->JntToCart(q, out, link);
 }
 
 void CartesianControllerBase::publishStateFeedback()
