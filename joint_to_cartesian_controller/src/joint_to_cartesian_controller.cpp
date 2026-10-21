@@ -121,7 +121,12 @@ controller_interface::CallbackReturn JointToCartesianController::on_configure(
     get_node()->get_name() + std::string("/curr_position"), 10);
   m_distance_publisher = get_node()->create_publisher<geometry_msgs::msg::PointStamped>(
     get_node()->get_name() + std::string("/distance"), 10);
-  
+
+  m_rt_pose_publisher = std::make_unique<realtime_tools::RealtimePublisher<geometry_msgs::msg::PoseStamped>>(m_pose_publisher);
+  m_rt_cmd_position_publisher = std::make_unique<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>(m_cmd_position_publisher);
+  m_rt_curr_position_publisher = std::make_unique<realtime_tools::RealtimePublisher<sensor_msgs::msg::JointState>>(m_curr_position_publisher);
+  m_rt_distance_publisher = std::make_unique<realtime_tools::RealtimePublisher<geometry_msgs::msg::PointStamped>>(m_distance_publisher);
+
 
   // Build a kinematic chain of the robot
   if (!robot_model.initString(robot_description))
@@ -154,6 +159,14 @@ controller_interface::CallbackReturn JointToCartesianController::on_configure(
   // for any case make reference interfaces size of command interfaces
   reference_interfaces_.resize(reference_interface_names_.size(),
                                std::numeric_limits<double>::quiet_NaN());
+
+  for (auto * rt_pub : {m_rt_cmd_position_publisher.get(), m_rt_curr_position_publisher.get()})
+  {
+    rt_pub->lock();
+    rt_pub->msg_.name = reference_interface_names_;
+    rt_pub->msg_.position.resize(reference_interface_names_.size());
+    rt_pub->unlock();
+  }
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -257,7 +270,7 @@ controller_interface::return_type JointToCartesianController::update_and_write_c
 
   m_current_pose.header.stamp = get_node()->now();
   m_current_pose.header.frame_id = m_robot_base_link;
-  m_pose_publisher->publish(m_current_pose);
+  m_rt_pose_publisher->try_publish(m_current_pose);
 
   // Compute distance between cmd_positions and current_positions
   double distance = 0.0;
@@ -285,12 +298,12 @@ controller_interface::return_type JointToCartesianController::update_and_write_c
   // Publish warning in case of critical distance
   if (distance > m_distance_critical_threshold)
   {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(),
+    RCLCPP_ERROR_STREAM_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
                         "Critical joint deviation from target: " << distance*180.0/M_PI << " degrees.");
   }
   else if (distance > m_distance_threshold)
   {
-    RCLCPP_ERROR_STREAM(get_node()->get_logger(),
+    RCLCPP_ERROR_STREAM_THROTTLE(get_node()->get_logger(), *get_node()->get_clock(), 1000,
                         "Joint deviation from target is " << distance*180.0/M_PI << " degrees.");
   }
 
@@ -299,29 +312,29 @@ controller_interface::return_type JointToCartesianController::update_and_write_c
   geometry_msgs::msg::PointStamped distance_msg;
   distance_msg.header.stamp = now;
   distance_msg.point.x = distance;
-  m_distance_publisher->publish(distance_msg);
+  m_rt_distance_publisher->try_publish(distance_msg);
 
   // Publish cmd_positions
-  sensor_msgs::msg::JointState joint_state_msg;
-  joint_state_msg.header.stamp = now;
-  joint_state_msg.name = reference_interface_names_;
-  joint_state_msg.position.resize(cmd_positions.rows());
-  for (int i = 0; i < cmd_positions.rows(); ++i)
+  if (m_rt_cmd_position_publisher->trylock())
   {
-    joint_state_msg.position[i] = cmd_positions(i);
+    m_rt_cmd_position_publisher->msg_.header.stamp = now;
+    for (int i = 0; i < cmd_positions.rows(); ++i)
+    {
+      m_rt_cmd_position_publisher->msg_.position[i] = cmd_positions(i);
+    }
+    m_rt_cmd_position_publisher->unlockAndPublish();
   }
-  m_cmd_position_publisher->publish(joint_state_msg);
 
   // Publish current_positions
-  sensor_msgs::msg::JointState joint_state_msg2;
-  joint_state_msg2.header.stamp = now;
-  joint_state_msg2.name = reference_interface_names_;
-  joint_state_msg2.position.resize(current_positions.rows());
-  for (int i = 0; i < current_positions.rows(); ++i)
+  if (m_rt_curr_position_publisher->trylock())
   {
-    joint_state_msg2.position[i] = current_positions(i);
+    m_rt_curr_position_publisher->msg_.header.stamp = now;
+    for (int i = 0; i < current_positions.rows(); ++i)
+    {
+      m_rt_curr_position_publisher->msg_.position[i] = current_positions(i);
+    }
+    m_rt_curr_position_publisher->unlockAndPublish();
   }
-  m_curr_position_publisher->publish(joint_state_msg2);
 
   return controller_interface::return_type::OK;
 }
