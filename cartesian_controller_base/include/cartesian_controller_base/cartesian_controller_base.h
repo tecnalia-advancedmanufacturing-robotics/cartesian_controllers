@@ -53,10 +53,12 @@
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
 #include <kdl/treefksolverpos_recursive.hpp>
+#include <kdl/tree.hpp>
 #include <memory>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <string>
+#include <unordered_map>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 #include <vector>
 
@@ -172,6 +174,18 @@ protected:
   }
 
   /**
+   * @brief Accept a link on the chain, or a fixed-joint branch off it.
+   *
+   * Off-chain links are cached as a constant offset from the nearest chain link.
+   */
+  bool ensureLink(const std::string & link);
+
+  /**
+   * @brief Forward kinematics to a chain link or a fixed branch of one.
+   */
+  int fkToLink(const KDL::JntArray & q, KDL::Frame & out, const std::string & link);
+
+  /**
    * @brief Helper method to check the controller's state during input callbacks
    *
    * @return True if the controller is active, false otherwise
@@ -246,6 +260,14 @@ private:
   // Dynamic parameters
   double m_error_scale;
   std::string m_robot_description;
+
+  KDL::Tree m_robot_tree;
+  struct FixedBranch
+  {
+    std::string anchor;
+    KDL::Frame offset;
+  };
+  std::unordered_map<std::string, FixedBranch> m_fixed_branches;
 };
 
 }  // namespace cartesian_controller_base

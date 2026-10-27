@@ -85,9 +85,9 @@ CartesianForceController::on_configure(const rclcpp_lifecycle::State & previous_
     return ret;
   }
 
-  // Make sure sensor link is part of the robot chain
+  // Make sure sensor link is part of the robot chain, or a fixed branch of it
   m_ft_sensor_ref_link = get_node()->get_parameter("ft_sensor_ref_link").as_string();
-  if (!Base::robotChainContains(m_ft_sensor_ref_link))
+  if (!Base::ensureLink(m_ft_sensor_ref_link))
   {
     RCLCPP_ERROR_STREAM(get_node()->get_logger(), m_ft_sensor_ref_link
                                                     << " is not part of the kinematic chain from "
@@ -221,10 +221,10 @@ void CartesianForceController::setFtSensorReferenceFrame(const std::string & new
   KDL::JntArray jnts(Base::m_ik_solver->getPositions());
 
   KDL::Frame sensor_ref;
-  Base::m_forward_kinematics_solver->JntToCart(jnts, sensor_ref, m_ft_sensor_ref_link);
+  Base::fkToLink(jnts, sensor_ref, m_ft_sensor_ref_link);
 
   KDL::Frame new_sensor_ref;
-  Base::m_forward_kinematics_solver->JntToCart(jnts, new_sensor_ref, m_new_ft_sensor_ref);
+  Base::fkToLink(jnts, new_sensor_ref, m_new_ft_sensor_ref);
 
   m_ft_sensor_transform = new_sensor_ref.Inverse() * sensor_ref;
 }
