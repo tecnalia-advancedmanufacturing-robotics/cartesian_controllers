@@ -121,7 +121,7 @@ CartesianForceController::on_configure(const rclcpp_lifecycle::State & previous_
 
   // Initialize Filters: sampling frequency, cut-off frequency, bandwidth
   m_fs = get_node()->get_parameter("filter_fs").as_double();
-  if (m_fc < 0.0)
+  if (m_fs < 0.0)
   {
     RCLCPP_ERROR(get_node()->get_logger(), "filter_fs parameter is zero or negative");
     return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::ERROR;
